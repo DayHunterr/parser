@@ -9,4 +9,5 @@
 /vendor/
 /result/
 /.idea/
+proxies.txt
 ###< symfony/framework-bundle ###
