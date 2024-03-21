@@ -128,6 +128,7 @@ class ParseFinancyAZ extends Command
                 });
             } catch (\Throwable $ex){
                 $errorWriter->write(sprintf(self::ERROR_PATTERN, $searchUrl, $ex->getMessage()));
+                return Command::SUCCESS;
             }
         }
 
