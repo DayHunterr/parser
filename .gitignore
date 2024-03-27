@@ -9,5 +9,7 @@
 /vendor/
 /result/
 /.idea/
+package-lock.json
+package.json
 proxies.txt
 ###< symfony/framework-bundle ###
