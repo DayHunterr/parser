@@ -53,7 +53,7 @@ final class ThreadsCreatorOfCeginfoCommand extends Command
         $console = $this->projectDir . '/bin/console';
         $runningProcesses = [];
 
-        foreach (file('CeginfoSitemaps/profilesCeg.csv', FILE_IGNORE_NEW_LINES) as $profile){
+        foreach (file('profilesCeg.csv', FILE_IGNORE_NEW_LINES) as $profile){
             $profileOption = sprintf('--profiles=%s', $profile);
             $commandline = ['/usr/bin/php', $console, ParseCeginfoSitemaps::COMMAND_NAME, $profileOption];
 
