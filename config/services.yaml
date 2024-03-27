@@ -27,3 +27,8 @@ services:
         arguments: ['%kernel.project_dir%']
         tags:
             - { name: console.command }
+
+    App\Command\ThreadsCreatorOfCeginfoCommand:
+        arguments: [ '%kernel.project_dir%' ]
+        tags:
+            - { name: console.command }
