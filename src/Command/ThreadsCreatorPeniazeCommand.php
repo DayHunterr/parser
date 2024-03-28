@@ -56,7 +56,6 @@ final class ThreadsCreatorPeniazeCommand extends Command
         foreach (file('sitemap-or.csv', FILE_IGNORE_NEW_LINES) as $line){
             $lineOption = sprintf('--line=%s', $line);
             $commandline = ['/usr/bin/php', $console, ParserPeniazePageCommand::COMMAND_NAME, $lineOption];
-//            dump($commandline[2]. ' '. $commandline[3]);
             $process = new Process($commandline);
             $process->start();
 

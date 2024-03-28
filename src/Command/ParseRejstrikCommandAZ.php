@@ -19,7 +19,7 @@ class ParseRejstrikCommandAZ extends Command
     public const COMMAND_NAME = 'parse:rejstrikAZ.cz';
     private const BASE_URI = 'https://rejstrik-firem.kurzy.cz';
     private const SEARCH_URL = self::BASE_URI . '/hledej-firmy/?s=%s&r=True&page=%s';
-    private const RESULT_PATTERN = "%s}##{%s}##{%s}##{%s}##{%s}##{%s}##{%s\n";
+    private const RESULT_PATTERN = "%s}##{%s}##{%s}##{%s}##{%s}##{%s\n";
     private const ERROR_PATTERN = "%s}##{%s\n";
 
     public function __construct()
@@ -47,7 +47,7 @@ class ParseRejstrikCommandAZ extends Command
         $this
             ->setName(self::COMMAND_NAME)
             ->setDescription('This command runs parsing rejstrikAZ.cz')
-            ->setHelp('Run this command to execute your custom tasks in the execute function.')
+            ->setHelp('Run this command to parse data from rejstrik-firem.kurzy.cz')
             ->addOption('combination', 'c', InputOption::VALUE_REQUIRED, 'Chars combination.');
     }
 
@@ -66,7 +66,6 @@ class ParseRejstrikCommandAZ extends Command
         for ($page = 1; $page < 500000; $page++) {
 
             $searchUrl = sprintf(self::SEARCH_URL, $combination, $page);
-            dump($searchUrl);
             try {
                 $response = $this->sendGETRequest($searchUrl, [
                     'proxy' => $this->getRandomProxy(),
@@ -78,12 +77,10 @@ class ParseRejstrikCommandAZ extends Command
                 }
 
                 $crawler = new CrawlerWrapper((string)$response->getBody());
-//                dd($crawler->html());
                 if ($crawler->getXPathText('//*[@id="leftcolumn"]/div[3]/div[2]/ul[1]/li') == 'Subjekt nenalezen') {
                     return Command::SUCCESS;
                 }
 
-//                $elementCount = $crawler->filterXPath('//a[text()="v právnických osobách"]')->nextAll()->text();
 
                 $elementCount = $crawler->filter('.or_mainl_div')->text();
                 if (preg_match('/nalezeno:\s*(\d+)/', $elementCount, $matches)) {
@@ -92,32 +89,23 @@ class ParseRejstrikCommandAZ extends Command
                 if ($count > $elementCount){
                     return Command::SUCCESS;
                 }
-//                dd($elementCount);
 
                 $rows = $crawler->filterXPath('//*[@id="leftcolumn"]/div[3]/div[2]/ul[1]/li');
-//                dd($rows->html());
 
                 $rows->each(function (CrawlerWrapper $row) use (&$count, $searchUrl, $resultWriter, $errorWriter) {
-                    $status = 'Active';
                     try {
                         $name = $this->extractName($row);
-                        dump($name);
-//                        dd($name);
-                        $string = $row->getNodeText('li');
-//                        dd($string);
-                        $nip = $this->extractNip($string);
-//                        dd($nip);
-                        $address = $this->extractAddress($string);
-//                        dd($address);
+
+                        $companyInfoString = $row->getNodeText('li');
+
+                        $nip = $this->extractNip($companyInfoString);
+                        $address = $this->extractAddress($companyInfoString);
                         $postalCode = $this->extractPostalCode($address);
-//                        dd($postalCode);
                         $city = trim($this->extractCity($address));
-//                        dd($city);
                         $street = trim($this->extractStreet($address));
-//                        dd($street);
-                        $date = $this->extractDate($string);
-//                        dd($date);
-                        $companyData = sprintf(self::RESULT_PATTERN, $name, $nip, $status, $date,
+                        $date = $this->extractDate($companyInfoString);
+
+                        $companyData = sprintf(self::RESULT_PATTERN, $name, $nip, $date,
                             $street, $city, $postalCode);
                         $resultWriter->write($companyData);
                         $count++;
@@ -180,9 +168,8 @@ class ParseRejstrikCommandAZ extends Command
             $textAfterLastComma = substr($address, $lastCommaPosition + 1);
 
             return preg_replace('/\D/', '', $textAfterLastComma);
-        } else {
-            return null;
         }
+        return null;
     }
 
     /**
@@ -198,9 +185,8 @@ class ParseRejstrikCommandAZ extends Command
             $textAfterLastComma = substr($address, $lastCommaPosition + 1);
             $deletePSC = str_replace('PSČ', '', $textAfterLastComma);
             return preg_replace('/\d/', '', $deletePSC);
-        } else {
-            return null;
         }
+        return null;
     }
 
     /**
@@ -227,18 +213,8 @@ class ParseRejstrikCommandAZ extends Command
     {
         if (preg_match('/Den vzniku:\s*([^,]+)/u', $string, $matches)) {
             return trim($matches[1]) ?? null;
-
-//            $date = DateTime::createFromFormat('d.m.Y', $dateString);
-//
-//            if ($date !== false) {
-//                return $date->format('Y-m-d');
-//            }
         }
 
         return null;
-    }
-
-    private function removeNonBreakingSpaces(string $string): string {
-        return str_replace('&nbsp;', ' ', $string);
     }
 }

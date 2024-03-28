@@ -85,7 +85,6 @@ class ParserPeniazePageCommand extends Command
                     $companyData = sprintf(self::RESULT_PATTERN, $originName, $nip, $status, $date,
                         $street, $city, $postalCode);
                     $resultWriter->write($companyData);
-//                    sleep(1);
                 });
             } catch (\Throwable $ex) {
                 $errorWriter->write(sprintf(self::ERROR_PATTERN, $line, $ex->getMessage()));
