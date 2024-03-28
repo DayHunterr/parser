@@ -50,11 +50,14 @@ class ParseCeginfoSitemaps extends Command
             ->addOption('profiles','pr', InputOption::VALUE_REQUIRED, 'Reading from file');
     }
 
+
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
 
         $resultWriter = new Writer('result/hu/ceginfo/result.csv');
         $errorWriter = new Writer('result/hu/ceginfo/error.csv');
+        $closedCoWriter = new Writer('result/hu/ceginfo/closed.csv');
 
         $io = new SymfonyStyle($input, $output);
 
@@ -79,7 +82,6 @@ class ParseCeginfoSitemaps extends Command
 //    }
 
                 $line = $input->getOption('profiles');
-
                 $content = $this->client->get($line)->getBody()->getContents();
 
                 try {
@@ -89,17 +91,17 @@ class ParseCeginfoSitemaps extends Command
 
                     if ($response->getStatusCode() !== 200) {
                         $errorWriter->write(sprintf(self::ERROR_PATTERN, $line, $response->getStatusCode()));
+                        return Command::SUCCESS;
                     }
 
                     $crawler = new CrawlerWrapper($content);
 
                     $year = $crawler->getNodeText('h2.company-title > .small');
                     $name = str_replace($year, '', $crawler->getNodeText('h2.company-title'));
-//                    dd($name .' '.$line);
                     $address = $crawler->getNodeText('h2.company-title + p');
 
                     if (!$address || $address === '-' || !$name || $name === '-') {
-                        $errorWriter->write($line . PHP_EOL);
+                        $errorWriter->write(sprintf(self::ERROR_PATTERN,$line, "Ivalid address"));
                         $io->success(sprintf('No result %s', $line));
                     }
 
@@ -108,18 +110,16 @@ class ParseCeginfoSitemaps extends Command
                     $street = trim($this->extractStreet($address));
                     $nip = $crawler->getEqNodeText('h2.company-title + p + div > p > span > .text-capitalize', 0);
                     $regN = $crawler->getEqNodeText('h2.company-title + p + div > p > span > .text-capitalize', 1);
+                    $companyData = sprintf(self::RESULT_PATTERN,$name,$nip,$year,$street,$city,$postalCode,$regN);
 
-                    if($crawler->getNodeText('div.status.stategreen')){
-                        $companyData = sprintf(self::RESULT_PATTERN,$name,$nip,$year,$street,$city,$postalCode,$regN);
-                        $resultWriter->write($companyData);
-                    }
+                    $crawler->getNodeText('div.status.stategreen')
+                        ? $resultWriter->write($companyData)
+                        : $closedCoWriter->write($companyData);
 
                 } catch (\Throwable $ex) {
                     $errorWriter->write(sprintf(self::ERROR_PATTERN, $line, $ex->getMessage()));
                     return Command::SUCCESS;
                 }
-
-
         return Command::SUCCESS;
     }
 
