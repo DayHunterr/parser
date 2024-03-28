@@ -7,6 +7,8 @@ use App\Util\ProxyRandomizer;
 use App\Util\RequestAttempt;
 use App\Util\Writer;
 use GuzzleHttp\Client;
+use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\Cookie\FileCookieJar;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -18,10 +20,10 @@ class ParseCeginfoSitemaps extends Command
 
     use ProxyRandomizer, RequestAttempt;
 
-    private const SITES = 'https://ceginfo.hu/sitemap.xml';
     public const COMMAND_NAME = "parse:ceginfo.hu";
     private const BASE_URI = 'https://ceginfo.hu/';
-
+    private const SITES = self::BASE_URI . 'sitemap.xml';
+    private const SEARCH_FORM_URI = self::BASE_URI . 'cegkereso/rapid';
     private const RESULT_PATTERN = "%s}##{%s}##{%s}##{%s}##{%s}##{%s}##{%s\n";
     private const ERROR_PATTERN = "%s}##{%s\n";
     private $client;
@@ -47,9 +49,8 @@ class ParseCeginfoSitemaps extends Command
             ->setName(self::COMMAND_NAME)
             ->setDescription('This command runs parsing parse:ceginfo.hu')
             ->setHelp('Run this command to execute your custom tasks in the execute function.')
-            ->addOption('profiles','pr', InputOption::VALUE_REQUIRED, 'Reading from file');
+            ->addOption('combination', 'c', InputOption::VALUE_REQUIRED, 'Characters combination');
     }
-
 
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -58,9 +59,6 @@ class ParseCeginfoSitemaps extends Command
         $resultWriter = new Writer('result/hu/ceginfo/result.csv');
         $errorWriter = new Writer('result/hu/ceginfo/error.csv');
         $closedCoWriter = new Writer('result/hu/ceginfo/closed.csv');
-
-        $io = new SymfonyStyle($input, $output);
-
 
 //        $sitemaps = ["sitemap_01_1.xml","sitemap_01_2.xml","sitemap_01_3.xml","sitemap_01_4.xml","sitemap_01_5.xml","sitemap_02_1.xml","sitemap_03_1.xml",
 //        "sitemap_04_1.xml","sitemap_05_1.xml","sitemap_06_1.xml","sitemap_07_1.xml","sitemap_08_1.xml","sitemap_09_1.xml","sitemap_10_1.xml","sitemap_11_1.xml",
@@ -81,45 +79,102 @@ class ParseCeginfoSitemaps extends Command
 //            fclose($stream);
 //    }
 
-                $line = $input->getOption('profiles');
-                $content = $this->client->get($line)->getBody()->getContents();
+//                $line = $input->getOption('profiles');
+//                $line = 'https://ceginfo.hu/ceglista/cegek';
 
-                try {
-                    $response = $this->sendGETRequest($line, [
-                        'proxy' => $this->getRandomProxy(),
-                    ]);
+        $chars = $input->getOption('combination');
 
-                    if ($response->getStatusCode() !== 200) {
-                        $errorWriter->write(sprintf(self::ERROR_PATTERN, $line, $response->getStatusCode()));
-                        return Command::SUCCESS;
-                    }
+        $cookieFilePath = 'cookies/hu/ceginfo/cookies.txt';
+        $cookieJar = new FileCookieJar($cookieFilePath, true);
 
-                    $crawler = new CrawlerWrapper($content);
+        try {
+            $response = $this->sendGETRequest(self::BASE_URI, [
+                'proxy' => $this->getRandomProxy(),
+                'cookies' => $cookieJar,
+            ]);
 
-                    $year = $crawler->getNodeText('h2.company-title > .small');
-                    $name = str_replace($year, '', $crawler->getNodeText('h2.company-title'));
-                    $address = $crawler->getNodeText('h2.company-title + p');
+            if ($response->getStatusCode() !== 200) {
+                $errorWriter->write(sprintf(self::ERROR_PATTERN, self::BASE_URI, $response->getStatusCode()));
+                return Command::SUCCESS;
+            }
 
-                    if (!$address || $address === '-' || !$name || $name === '-') {
-                        $errorWriter->write(sprintf(self::ERROR_PATTERN,$line, "Ivalid address"));
-                        $io->success(sprintf('No result %s', $line));
-                    }
+            foreach ($cookieJar as $cookie) {
+                if ($cookie->getName() === 'ceginfo_csrf_token') {
+                    $csrfToken = $cookie->getValue();
+                    break;
+                } else {
+                    $csrfToken = null;
+                }
+            }
 
-                    $postalCode = trim($this->extractPostalCode($address));
-                    $city = trim($this->extractCity($address));
-                    $street = trim($this->extractStreet($address));
-                    $nip = $crawler->getEqNodeText('h2.company-title + p + div > p > span > .text-capitalize', 0);
-                    $regN = $crawler->getEqNodeText('h2.company-title + p + div > p > span > .text-capitalize', 1);
-                    $companyData = sprintf(self::RESULT_PATTERN,$name,$nip,$year,$street,$city,$postalCode,$regN);
+            try {
+                $data = [
+                    'ceginfo_csrf_token' => $csrfToken,
+                    'rapid' => $chars,
+                    'honeypot' => '',
+                ];
 
-                    $crawler->getNodeText('div.status.stategreen')
-                        ? $resultWriter->write($companyData)
-                        : $closedCoWriter->write($companyData);
-
-                } catch (\Throwable $ex) {
-                    $errorWriter->write(sprintf(self::ERROR_PATTERN, $line, $ex->getMessage()));
+                $response = $this->sendPOSTRequest(self::SEARCH_FORM_URI, [
+                    'proxy' => $this->getRandomProxy(),
+                    'form_params' => $data,
+                    'cookies' => $cookieJar,
+                    'allow_redirects' => false,
+                ]);
+                if ($response->getStatusCode() !== 303) {
+                    $errorWriter->write(sprintf(self::ERROR_PATTERN, self::SEARCH_FORM_URI, $response->getStatusCode()));
                     return Command::SUCCESS;
                 }
+                $redirectUrl = $response->getHeaderLine('Location');
+
+                for ($page = 1; $page < 50000; $page++) {
+                    $paginationUrl = $redirectUrl . '/' . $page;
+                    try {
+                        $response = $this->sendGETRequest($paginationUrl, [
+                            'proxy' => $this->getRandomProxy(),
+                            'cookies' => $cookieJar,
+                            'allow_redirects' => false,
+                        ]);
+
+                        if ($response->getStatusCode() !== 200) {
+                            $errorWriter->write(sprintf(self::ERROR_PATTERN, $paginationUrl, $response->getStatusCode()));
+                            continue;
+                        }
+
+                        $crawler = new CrawlerWrapper((string)$response->getBody());
+                        $rows = $crawler->filterXPath('//*[@id="talalati-lista"]/div[2]/div[1]/div/div/div[3]/div');
+                        $rows->each(function (CrawlerWrapper $row) use ($resultWriter, $errorWriter, $closedCoWriter) {
+                            $profileLink = $row->getNodeAttr('a', 'href');
+                            $year = $row->getNodeText('h2 > small');
+                            $name = str_replace($year, '', $row->getNodeText('h2.s-title'));
+                            $address = $row->getNodeText('h2.s-title + p');
+                            if (!$address || $address === '-' || !$name || $name === '-') {
+                                $errorWriter->write(sprintf(self::ERROR_PATTERN, $profileLink, "Invalid address"));
+                            }
+
+                            $postalCode = trim($this->extractPostalCode($address));
+                            $city = trim($this->extractCity($address));
+                            $street = trim($this->extractStreet($address));
+                            $nip = $this->deleteBeforeColon($row->getEqNodeText('h2.s-title + p + div > p > span', 0));
+                            $regN = $this->deleteBeforeColon($row->getEqNodeText('h2.s-title + p + div > p > span', 1));
+                            $companyData = sprintf(self::RESULT_PATTERN, $name, $nip, $year, $street, $city, $postalCode, $regN);
+
+                            $row->getNodeText('div.status.stategreen')
+                                ? $resultWriter->write($companyData)
+                                : $closedCoWriter->write($companyData);
+                        });
+                    } catch (\Throwable $ex) {
+                        $errorWriter->write(sprintf(self::ERROR_PATTERN, $paginationUrl, $ex->getMessage()));
+                        return Command::SUCCESS;
+                    }
+                }
+            } catch (\Throwable $ex) {
+                $errorWriter->write(sprintf(self::ERROR_PATTERN, self::SEARCH_FORM_URI, $ex->getMessage()));
+                return Command::SUCCESS;
+            }
+        } catch (\Throwable $ex) {
+            $errorWriter->write(sprintf(self::ERROR_PATTERN, self::BASE_URI, $ex->getMessage()));
+            return Command::SUCCESS;
+        }
         return Command::SUCCESS;
     }
 
@@ -158,6 +213,19 @@ class ParseCeginfoSitemaps extends Command
         $addrParts = explode(' ', $address);
 
         return $addrParts[0] ?? null;
+    }
+
+    /**
+     * @param string|null $input
+     *
+     * @return string|null
+     */
+    private function deleteBeforeColon(?string $input): ?string {
+        $pattern = '/.*?:/';
+
+        $result = preg_replace($pattern, '', $input, 1);
+
+        return $result !== null ? trim($result) : null;
     }
 
 //    private function getArchives(): array

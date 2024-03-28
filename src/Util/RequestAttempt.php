@@ -34,4 +34,27 @@ trait RequestAttempt
 
         throw new \Exception('Exceeded count of attempts');
     }
+
+    /**
+     * @param string $url
+     * @param array $params
+     *
+     * @return ResponseInterface
+     *
+     * @throws \Exception
+     */
+    private function sendPOSTRequest(string $url, array $params = []): ResponseInterface
+    {
+        $attempt = 1;
+
+        while($attempt <> 5) {
+            try {
+                return $this->client->post($url, $params);
+            } catch (\Throwable $ex) {
+                ++$attempt;
+            }
+        }
+
+        throw new \Exception('Exceeded count of attempts');
+    }
 }

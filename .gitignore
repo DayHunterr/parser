@@ -8,6 +8,7 @@
 /var/
 /vendor/
 /result/
+/cookies/
 /.idea/
 package-lock.json
 package.json
