@@ -110,12 +110,11 @@ class ParseCeginfoSitemaps extends Command
                     $street = trim($this->extractStreet($address));
                     $nip = $crawler->getEqNodeText('h2.company-title + p + div > p > span > .text-capitalize', 0);
                     $regN = $crawler->getEqNodeText('h2.company-title + p + div > p > span > .text-capitalize', 1);
-                    if($crawler->getNodeText('div.status.stategreen')){
-                        $companyData = sprintf(self::RESULT_PATTERN,$name,$nip,$year,$street,$city,$postalCode,$regN);
-                        $resultWriter->write($companyData);
-                    } else{
-                        $closedCoWriter->write(sprintf(self::ERROR_PATTERN,$line,'Inactive'));
-                    }
+                    $companyData = sprintf(self::RESULT_PATTERN,$name,$nip,$year,$street,$city,$postalCode,$regN);
+
+                    $crawler->getNodeText('div.status.stategreen')
+                        ? $resultWriter->write($companyData)
+                        : $closedCoWriter->write($companyData);
 
                 } catch (\Throwable $ex) {
                     $errorWriter->write(sprintf(self::ERROR_PATTERN, $line, $ex->getMessage()));
