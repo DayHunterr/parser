@@ -87,7 +87,7 @@ class ParsePageFinancyByNip extends Command
                     if ($date !== false) {
                         $formattedDate = $date->format('Y-m-d');
                     } else {
-                        return Command::SUCCESS;
+                        $formattedDate = '';
                     }
 
                     $name = $row->getXPathText('//div[contains(text(), 
