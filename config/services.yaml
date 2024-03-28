@@ -32,3 +32,13 @@ services:
         arguments: [ '%kernel.project_dir%' ]
         tags:
             - { name: console.command }
+
+    App\Command\ThreadsCreatorOfRejstrikAZCommand:
+        arguments: [ '%kernel.project_dir%' ]
+        tags:
+            - { name: console.command }
+
+    App\Command\ThreadsCreatorPeniazeCommand:
+        arguments: [ '%kernel.project_dir%' ]
+        tags:
+            - { name: console.command }
